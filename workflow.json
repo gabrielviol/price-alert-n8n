@@ -1,0 +1,343 @@
+{
+  "name": "Product Price Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "interval": "8h"
+      },
+      "name": "Cron",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        200,
+        300
+      ],
+      "id": "cron-node"
+    },
+    {
+      "parameters": {
+        "filePath": "/home/node/products.json"
+      },
+      "name": "Read Products File",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        400,
+        300
+      ],
+      "id": "read-products-file"
+    },
+    {
+      "parameters": {
+        "sourceKey": "data",
+        "destinationKey": "json"
+      },
+      "name": "Move Binary Data",
+      "type": "n8n-nodes-base.moveBinaryData",
+      "typeVersion": 1,
+      "position": [
+        600,
+        300
+      ],
+      "id": "move-binary-data"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "json",
+        "options": {}
+      },
+      "name": "Split Products",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [
+        800,
+        300
+      ],
+      "id": "split-products"
+    },
+    {
+      "parameters": {
+        "url": "=https://www.amazon.com.br/s?k={{$json.name.replace(' ', '+')}}",
+        "options": {
+          "headerParameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0"
+            }
+          ]
+        }
+      },
+      "name": "Amazon Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        200
+      ],
+      "id": "amazon-request"
+    },
+    {
+      "parameters": {
+        "dataPropertyName": "html",
+        "extractionValues": {
+          "values": [
+            {
+              "key": "price",
+              "cssSelector": ".a-price .a-offscreen",
+              "returnValue": "text"
+            },
+            {
+              "key": "link",
+              "cssSelector": ".a-link-normal.a-text-normal",
+              "returnValue": "attribute",
+              "attribute": "href"
+            }
+          ]
+        }
+      },
+      "name": "Amazon Extract",
+      "type": "n8n-nodes-base.htmlExtract",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        200
+      ],
+      "id": "amazon-extract"
+    },
+    {
+      "parameters": {
+        "functionCode": "const link = $json.link?.startsWith('/') ? 'https://www.amazon.com.br' + $json.link : $json.link;\nreturn [{ json: { loja: 'Amazon', price: $json.price, link } }];"
+      },
+      "name": "Amazon Format",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1400,
+        200
+      ],
+      "id": "amazon-format"
+    },
+    {
+      "parameters": {
+        "functionCode": "const amazon = $items(\"Amazon Format\", 0)[0].json;\nconst magalu = $items(\"Magalu Format\", 0)[0].json;\n\nconst produto = $node[\"Split Products\"].json.name;\nconst max = $node[\"Split Products\"].json.maxPrice;\n\nfunction format(loja, data) {\n  const price = parseFloat(data.price.replace(/[R$ ]/g, '').replace(',', '.'));\n  const fire = price <= max ? '🔥' : '';\n  return `**${loja}**: R$ ${price.toFixed(2)} ${fire}\\n🔗 ${data.link}\\n`;\n}\n\nlet msg = `🛒 **${produto}**\\n`;\nmsg += format('Amazon', amazon);\nmsg += format('Magalu', magalu);\n\nreturn [{ json: { content: msg } }];\n"
+      },
+      "name": "Build Message",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1600,
+        300
+      ],
+      "id": "build-message"
+    },
+    {
+      "parameters": {
+        "url": "https://discord.com/api/webhooks/1393680212058832957/xRNwKAQMSdqeOm7SRaB_KWHHYWd6KYscY7HrGkHOMMziAVIHF2nf0TvtSxrTrxT8sAGh",
+        "jsonParameters": true,
+        "options": {},
+        "bodyParametersJson": "={{ $json }}"
+      },
+      "name": "Send to Discord",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        1800,
+        200
+      ],
+      "id": "send-to-discord"
+    },
+    {
+      "parameters": {
+        "url": "=https://www.magazineluiza.com.br/busca/{{$json.name.replace(' ', '+')}}",
+        "options": {
+          "headerParameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0"
+            }
+          ]
+        }
+      },
+      "name": "Magalu Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        1000,
+        400
+      ],
+      "id": "magalu-request"
+    },
+    {
+      "parameters": {
+        "dataPropertyName": "html",
+        "extractionValues": {
+          "values": [
+            {
+              "key": "price",
+              "cssSelector": ".sc-6889b6e3-0.fYbXUC",
+              "returnValue": "text"
+            },
+            {
+              "key": "link",
+              "cssSelector": "a[data-testid='product-card-container']",
+              "returnValue": "attribute",
+              "attribute": "href"
+            }
+          ]
+        }
+      },
+      "name": "Magalu Extract",
+      "type": "n8n-nodes-base.htmlExtract",
+      "typeVersion": 1,
+      "position": [
+        1200,
+        400
+      ],
+      "id": "magalu-extract"
+    },
+    {
+      "parameters": {
+        "functionCode": "const link = $json.link?.startsWith('/') ? 'https://www.magazineluiza.com.br' + $json.link : $json.link;\nreturn [{ json: { loja: 'Magalu', price: $json.price, link } }];"
+      },
+      "name": "Magalu Format",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1400,
+        400
+      ],
+      "id": "magalu-format"
+    }
+  ],
+  "connections": {
+    "Cron": {
+      "main": [
+        [
+          {
+            "node": "Read Products File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Products File": {
+      "main": [
+        [
+          {
+            "node": "Move Binary Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Move Binary Data": {
+      "main": [
+        [
+          {
+            "node": "Split Products",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Products": {
+      "main": [
+        [
+          {
+            "node": "Amazon Request",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Magalu Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Amazon Request": {
+      "main": [
+        [
+          {
+            "node": "Amazon Extract",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Amazon Extract": {
+      "main": [
+        [
+          {
+            "node": "Amazon Format",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Amazon Format": {
+      "main": [
+        [
+          {
+            "node": "Build Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Message": {
+      "main": [
+        [
+          {
+            "node": "Send to Discord",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Magalu Request": {
+      "main": [
+        [
+          {
+            "node": "Magalu Extract",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Magalu Extract": {
+      "main": [
+        [
+          {
+            "node": "Magalu Format",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Magalu Format": {
+      "main": [
+        [
+          {
+            "node": "Build Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "1"
+}
